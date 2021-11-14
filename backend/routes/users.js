@@ -1,25 +1,103 @@
 const router = require('express').Router();
 let User = require('../models/user.model');
+let jwt = require("jsonwebtoken");
+let bcrypt = require('bcrypt');
 
-router.route('/').get( (req,res)=>{
-    User.find()
-        .then(users => res.json(users))
-        .catch(err => res.status(400).json('Error: '+err));
+require('dotenv').config();
 
+router.route("/register").post(async (req, res) => {
+    console.log(req.body);
+    
+try {
+    // Get user input
+    const { first_name, last_name, email, password } = req.body;
+
+    // Validate user input
+    if (!(email && password && first_name && last_name)) {
+      res.status(400).send("All input is required");
+    }
+
+    // check if user already exist
+    // Validate if user exist in our database
+    const oldUser = await User.findOne({ email });
+
+    if (oldUser) {
+      return res.status(409).send("User Already Exist. Please Login");
+    }
+
+    //Encrypt user password
+    encryptedPassword = await bcrypt.hash(password, 10);
+
+    // Create user in our database
+    const user = await User.create({
+      first_name,
+      last_name,
+      email: email.toLowerCase(), // sanitize: convert email to lowercase
+      password: encryptedPassword,
+    });
+
+    // Create token
+    const token = await jwt.sign(
+      { user_id: user._id, email },
+      process.env.TOKEN_KEY,
+      {
+        expiresIn: "2h",
+      }
+    );
+    // save user token
+    user.token = token;
+
+    // return new user
+    await res.status(201).json(user);
+  } catch (err) {
+    console.log(err);
+  }
+  // Our register logic ends here
 });
 
-router.route('/add').post((req,res)=>{
-    console.log(req);
 
-    const username = req.body.username;
+router.route("/login").post(async (req, res) => {
 
-    const newUser  = new User({username});
+    console.log(req.body);
 
-    newUser.save()
-    .then(()=>res.json('User added!'))
-    .catch(err => res.status(400).json("Error: "+err));
+    // Our login logic starts here
+    try {
+      // Get user input
+      const { email, password } = req.body;
+  
+      // Validate user input
+      if (!(email && password)) {
+        res.status(400).send("All input is required");
+      }
+      // Validate if user exist in our database
+      const user = await User.findOne({ email });
+  
+      if (user && (await bcrypt.compare(password, user.password))) {
+        // Create token
+        const token = jwt.sign(
+          { user_id: user._id, email },
+          process.env.TOKEN_KEY,
+          {
+            expiresIn: "2h",
+          }
+        );
+  
+        // save user token
+        user.token = token;
+  
+        // user
+        res.status(200).json(user);
+      }else{
+        res.status(400).send("Invalid Credentials");
+      }
+     
+    } catch (err) {
+      console.log(err);
+    }
+    // Our register logic ends here
+  });
+  
 
 
-});
 
 module.exports = router;
